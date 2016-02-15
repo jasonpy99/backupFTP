@@ -54,22 +54,35 @@ class BackupFTP:
         except Exception as e:
             print_error(e)
 
-    def download_dir(self, localdir='./', remotedir='./'):
+    def download_file(self, local_file, remote_file):
+        print('download file %s'% local_file)
+        file_handler = open(local_file, 'wb')
+        self.ftp.retrbinary('RETR %s' % (remote_file), file_handler.write)
+        file_handler.close()
+
+    def download_dir(self, local_dir='./', remote_dir='./'):
+        """
+        下载文件夹，
+        :param local_dir:
+        :param remote_dir:
+        :return:
+        """
         try:
-            self.ftp.cwd(remotedir)
+            self.ftp.cwd(remote_dir)
         except Exception as e:
-            print("No dir named %s and there's an error%s "% (remotedir, e) )
-        if not os.path.isdir(localdir):
-            os.makedirs(localdir)
+            print_error(e, "No dir named"+remote_dir )
+        if not os.path.isdir(local_dir):
+            os.makedirs(local_dir)
         self.file_list = []
         self.ftp.dir(self.get_file_list)
         remote_names = self.file_list
+        print(remote_names)
         for item in remote_names:
             file_type = item[0]
             file_name = item[1]
-            local = os.path.join(localdir, file_name)
+            local = os.path.join(local_dir, file_name)
             if file_type == 'd':
-                self.download_files(local, file_name)
+                self.download_dir(local, file_name)
             elif file_type == '-':
                 self.download_file(local, file_name)
         self.ftp.cwd('..')
@@ -79,6 +92,7 @@ class BackupFTP:
         获取当前目录的所有文件名和目录名以及文件夹标志
         :param line:从dir函数获取的一行
         """
+        print(line)
         file_infors = self.get_file_name(line)
         # 排除默认的. 和 .. 两个文件夹
         if file_infors[1] not in ['.', '..']:
@@ -93,18 +107,25 @@ class BackupFTP:
         """
         # 保存文件夹标志
         file_arr = [line[0]]
-        temp = line.split(' ')
-        filter_infor = []
-        for x in temp:
-            if x != "":
-                filter_infor.append(x)
-        file_arr.append(filter_infor[8])
+        import re
+        pattern = re.compile('[drwx-]{10}\s+?\d{1,2}\s+?\w+?\s+?\w+?\s+?\d+?\s+?[\d\w\u4e00-\u9fa5]+?\s+?\d+?\s+?[\d:]+?\s+?(.*)')
+        match = pattern.match(line)
+        if match:
+            file_arr.append(match.group(1))
+        else:
+            print_error(err_str="match filename")
         return file_arr
 
 
-def print_error(e):
+
+def print_error(e = '', err_str=''):
+    """
+    打印错误，并结束程序
+    :param e: Exception 对象
+    :param err_str: 自定义的错误输出
+    """
     date_now = time.strftime('%Y %m %d', time.localtime())
-    print("%s error occurred : %s" % (date_now, e))
+    print("%s error occurred : %s \n%s" % (date_now, err_str, e))
     sys.exit()
 
 if __name__ == '__main__':
@@ -122,3 +143,9 @@ if __name__ == '__main__':
 config = read_config()
 aFtp = BackupFTP(config['ftp'])
 aFtp.login()
+local_dir = '.' + os.sep + 'back/'
+remote_dir = config['ftp']['remote_dir']
+aFtp.download_dir(local_dir, remote_dir)
+timenow  = time.localtime()
+datenow  = time.strftime('%Y-%m-%d', timenow)
+print(" - %s 成功执行了备份\n" %datenow)
