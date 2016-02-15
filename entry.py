@@ -23,8 +23,8 @@ def confirm_configuration_completed(a_config):
     :return: True: 包含必备的信息
     TODO: 添加格式的检验
     """
-    nessary_items = ['address', 'name', 'password', 'port']
-    return set(nessary_items).issubset(set(a_config['ftp']))
+    necessary_items = ['address', 'name', 'password', 'port']
+    return set(necessary_items).issubset(set(a_config['ftp']))
 
 
 class BackupFTP:
@@ -35,7 +35,6 @@ class BackupFTP:
         self.password = a_config['password']
         self.port = int(a_config['port'])
         self.ftp = FTP()
-        self.remote_dir = a_config['remote_dir']
 
     def __del__(self):
         self.ftp.close()
@@ -49,38 +48,36 @@ class BackupFTP:
             print('connecting')
             ftp.connect(self.address, self.port)
             ftp.login(self.name, self.password)
-            ftp.cwd(self.remote_dir)
             print(ftp.getwelcome())
         except Exception as e:
             print_error(e)
 
-    def download_file(self, local_file, remote_file):
-        print('download file %s'% local_file)
+    def download_file(self, local_file, a_remote_file):
+        print('download file %s' % local_file)
         file_handler = open(local_file, 'wb')
-        self.ftp.retrbinary('RETR %s' % (remote_file), file_handler.write)
+        self.ftp.retrbinary('RETR %s' % a_remote_file, file_handler.write)
         file_handler.close()
 
-    def download_dir(self, local_dir='./', remote_dir='./'):
+    def download_dir(self, a_local_dir='./', a_remote_dir='./'):
         """
         下载文件夹，
-        :param local_dir:
-        :param remote_dir:
+        :param a_local_dir:
+        :param a_remote_dir:
         :return:
         """
         try:
-            self.ftp.cwd(remote_dir)
+            self.ftp.cwd(a_remote_dir)
         except Exception as e:
-            print_error(e, "No dir named"+remote_dir )
-        if not os.path.isdir(local_dir):
-            os.makedirs(local_dir)
+            print_error(e, "No dir named" + a_remote_dir)
+        if not os.path.isdir(a_local_dir):
+            os.makedirs(a_local_dir)
         self.file_list = []
         self.ftp.dir(self.get_file_list)
         remote_names = self.file_list
-        print(remote_names)
         for item in remote_names:
             file_type = item[0]
             file_name = item[1]
-            local = os.path.join(local_dir, file_name)
+            local = os.path.join(a_local_dir, file_name)
             if file_type == 'd':
                 self.download_dir(local, file_name)
             elif file_type == '-':
@@ -92,13 +89,13 @@ class BackupFTP:
         获取当前目录的所有文件名和目录名以及文件夹标志
         :param line:从dir函数获取的一行
         """
-        print(line)
         file_infors = self.get_file_name(line)
         # 排除默认的. 和 .. 两个文件夹
         if file_infors[1] not in ['.', '..']:
             self.file_list.append(file_infors)
 
-    def get_file_name(self, line):
+    @staticmethod
+    def get_file_name(line):
         """
         从传入的一行数据里提取出文件名或者文件夹名
         传入数据格式： -rw-r--r--    1 0        0         3096506 Feb 12 01:02 access_20160211.log，第一个字符是文件类型，文件夹是d
@@ -117,15 +114,15 @@ class BackupFTP:
         return file_arr
 
 
-
-def print_error(e = '', err_str=''):
+def print_error(e='', err_str=''):
     """
     打印错误，并结束程序
     :param e: Exception 对象
     :param err_str: 自定义的错误输出
+    :todo 这个函数的地方还有些别扭，需要改动
     """
-    date_now = time.strftime('%Y %m %d', time.localtime())
-    print("%s error occurred : %s \n%s" % (date_now, err_str, e))
+    date_now_t = time.strftime('%Y %m %d', time.localtime())
+    print("%s error occurred : %s \n%s" % (date_now_t, err_str, e))
     sys.exit()
 
 if __name__ == '__main__':
@@ -134,18 +131,19 @@ if __name__ == '__main__':
     if confirm_configuration_completed(config):
         aFtp = BackupFTP(config['ftp'])
         aFtp.login()
-
+        config = read_config()
+        aFtp = BackupFTP(config['ftp'])
+        aFtp.login()
+        if 'local_dir' in config['ftp'] and config['ftp']['local_dir'] != '':
+            local_dir = os.path.join('./', config['ftp']['local_dir']+"/")
+        else:
+            local_dir = '.' + os.sep + 'back/'
+        print(local_dir)
+        remote_dir = config['ftp']['remote_dir']
+        aFtp.download_dir(local_dir, remote_dir)
+        time_now = time.localtime()
+        date_now = time.strftime('%Y-%m-%d', time_now)
+        print(" - %s successfully backed up\n" % date_now)
     else:
-        print("The config file is not completed")
-        # for key in config['ftp']:
-        #     print(config['ftp'][str(key)])
+        print_error(err_str="The config file is not completed")
 
-config = read_config()
-aFtp = BackupFTP(config['ftp'])
-aFtp.login()
-local_dir = '.' + os.sep + 'back/'
-remote_dir = config['ftp']['remote_dir']
-aFtp.download_dir(local_dir, remote_dir)
-timenow  = time.localtime()
-datenow  = time.strftime('%Y-%m-%d', timenow)
-print(" - %s 成功执行了备份\n" %datenow)
